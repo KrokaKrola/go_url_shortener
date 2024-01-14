@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	_ "github.com/joho/godotenv/autoload"
 	"url_shortener_2/internal/database"
+
+	_ "github.com/joho/godotenv/autoload"
 )
 
 type Server struct {
