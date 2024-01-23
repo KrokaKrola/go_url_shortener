@@ -1,0 +1,3 @@
+DROP CONSTRAINT IF EXISTS fk_visits_link;
+
+DROP TABLE IF EXISTS visits;

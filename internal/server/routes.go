@@ -1,37 +1,28 @@
 package server
 
 import (
-	"encoding/json"
-	"log"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
+	"github.com/krokakrola/url_shortener/internal/handlers"
+	"github.com/redis/go-redis/v9"
 )
 
-func (s *Server) RegisterRoutes() http.Handler {
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+type Routes struct{}
 
-	r.Get("/", s.HelloWorldHandler)
-	r.Get("/health", s.healthHandler)
-
-	return r
+func NewRoutes() *Routes {
+	return &Routes{}
 }
 
-func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	resp := make(map[string]string)
-	resp["message"] = "Hello World"
+func (r *Routes) Setup(app *fiber.App, connection *pgx.Conn, redis *redis.Client) {
+	apiV1 := app.Group("/api/v1")
 
-	jsonResp, err := json.Marshal(resp)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
+	validate := NewValidator().validate
 
-	_, _ = w.Write(jsonResp)
-}
+	healthHandler := handlers.NewHealthHandler(connection, redis)
+	shortenHandler := handlers.NewShortenHandler(connection, validate, redis)
 
-func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	jsonResp, _ := json.Marshal(s.db.Health())
-	_, _ = w.Write(jsonResp)
+	apiV1.Get("/health", healthHandler.Handle)
+	apiV1.Post("/shorten", shortenHandler.HandleCreateShortURL)
+	apiV1.Get("/:shortUrl", shortenHandler.HandleRedirect)
+	apiV1.Get("/:shortUrl/stats", shortenHandler.HandleGetVisitsCount)
 }

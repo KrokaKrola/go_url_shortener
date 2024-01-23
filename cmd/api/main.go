@@ -2,27 +2,46 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"net/http"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
-	"url_shortener_2/internal/server"
+
+	"github.com/joho/godotenv"
+	"github.com/krokakrola/url_shortener/internal/server"
+	"github.com/krokakrola/url_shortener/internal/store"
 )
 
 func main() {
-	server := server.NewServer()
+	err := godotenv.Load(".env")
 
-	// Channel to receive interrupt signals
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	db, err := store.NewDatabase()
+
+	if err != nil {
+		log.Fatal("Error initializing database", err)
+	}
+
+	if err := db.Migrate(); err != nil {
+		log.Fatal("Error migrating database ", err)
+	}
+
+	defer db.Connection.Close(context.Background())
+
+	redis := store.NewRedis()
+
 	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
 
-	go func() {
-		fmt.Printf("Server started on address %s\n", server.Addr)
-		err := server.ListenAndServe()
+	s := server.NewServer(db.Connection, redis.Rdb)
 
-		if err != nil && err != http.ErrServerClosed {
+	go func() {
+		err = s.Start()
+
+		if err != nil {
 			panic(err)
 		}
 	}()
@@ -30,16 +49,12 @@ func main() {
 	// Block until a signal is received
 	<-stopChan
 
-	fmt.Println("Shutting down the server...")
-
-	// Create a context with a timeout to allow outstanding requests to finish
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	log.Println("Shutting down the server...")
 
 	// Attempt to gracefully shut down the server
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		fmt.Println("Error during server shutdown:", err)
+	if err := s.App.Shutdown(); err != nil {
+		log.Println("Error during server shutdown:", err)
 	} else {
-		fmt.Println("Server gracefully stopped")
+		log.Println("Server gracefully stopped")
 	}
 }

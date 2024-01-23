@@ -1,37 +1,32 @@
 package server
 
 import (
-	"fmt"
-	"net/http"
-	"os"
-	"strconv"
-	"time"
+	"log"
 
-	"url_shortener_2/internal/database"
-
-	_ "github.com/joho/godotenv/autoload"
+	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 type Server struct {
-	port int
-	db   database.Service
+	App        *fiber.App
+	connection *pgx.Conn
+	redis      *redis.Client
 }
 
-func NewServer() *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
-	NewServer := &Server{
-		port: port,
-		db:   database.New(),
+func NewServer(connection *pgx.Conn, redis *redis.Client) *Server {
+	return &Server{
+		App:        fiber.New(),
+		connection: connection,
+		redis:      redis,
 	}
+}
 
-	// Declare Server config
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", NewServer.port),
-		Handler:      NewServer.RegisterRoutes(),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
+func (s *Server) Start() error {
+	InitMiddlewares(s.App)
+	NewRoutes().Setup(s.App, s.connection, s.redis)
 
-	return server
+	log.Println("Server is running on port 3000")
+
+	return s.App.Listen(":3000")
 }
